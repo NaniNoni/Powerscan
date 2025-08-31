@@ -5,3 +5,7 @@ edition = "2024"
 
 [dependencies]
 gtk4 = "0.10.0"
+
+[build-dependencies]
+bindgen = "0.72.0"
+convert_case = "0.8.0"
