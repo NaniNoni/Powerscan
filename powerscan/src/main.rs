@@ -1,10 +1,7 @@
 use gtk::prelude::*;
 use gtk::{Application, ApplicationWindow, glib};
 use gtk4 as gtk;
-
-use crate::sane::Sane;
-
-mod sane;
+use sane::Sane;
 
 fn main() -> glib::ExitCode {
     let app = Application::builder()
