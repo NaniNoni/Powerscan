@@ -1,22 +1,24 @@
-use std::ffi::CStr;
-
 include!(concat!(env!("OUT_DIR"), "/sane.rs"));
 
+mod device;
+
+use crate::device::{DeviceType, DeviceVendor};
+use std::ffi::CStr;
+use thiserror::Error;
+
+pub use crate::device::Device;
+
 /// "Safe" SANE interface wrapper. All functions correspond to their respective C `sane_` function.
-pub struct Sane {
-    pub version_code: i32,
-}
+pub struct Sane {}
 
-#[derive(Debug, PartialEq, Eq)]
-pub struct Device {
-    pub name: String,
-    pub vendor: String,
-    pub model: String,
-    pub type_: String,
-}
+#[derive(Debug, Error)]
+pub enum SaneError {
+    #[error("internal SANE error, status: {status:?}")]
+    InternalSANE { status: SANE_Status },
 
-#[derive(Debug)]
-pub struct SaneError(pub SANE_Status);
+    #[error("invalid UTF8 in device string: {0}")]
+    Utf8Error(#[from] std::str::Utf8Error),
+}
 
 impl Sane {
     pub fn init(version_code: i32) -> Result<Self, SaneError> {
@@ -24,10 +26,10 @@ impl Sane {
             let mut version_code = version_code;
             let status = sane_init(&mut version_code, None);
             if status != SANE_Status::SANE_STATUS_GOOD {
-                return Err(SaneError(status));
+                return Err(SaneError::InternalSANE { status });
             }
 
-            Ok(Self { version_code })
+            Ok(Self {})
         }
     }
 
@@ -36,7 +38,7 @@ impl Sane {
             let mut device_list: *mut *const SANE_Device = std::ptr::null_mut();
             let status = sane_get_devices(&mut device_list, 0);
             if status != SANE_Status::SANE_STATUS_GOOD {
-                return Err(SaneError(status));
+                return Err(SaneError::InternalSANE { status });
             }
 
             let mut devices = Vec::new();
@@ -53,9 +55,9 @@ impl Sane {
                     let device = &*device_ptr;
 
                     let name = CStr::from_ptr(device.name).to_string_lossy().into_owned();
-                    let vendor = CStr::from_ptr(device.vendor).to_string_lossy().into_owned();
+                    let vendor = DeviceVendor::try_from(CStr::from_ptr(device.vendor))?;
                     let model = CStr::from_ptr(device.model).to_string_lossy().into_owned();
-                    let type_ = CStr::from_ptr(device.type_).to_string_lossy().into_owned();
+                    let type_ = DeviceType::try_from(CStr::from_ptr(device.type_))?;
 
                     devices.push(Device {
                         name,

@@ -17,14 +17,14 @@ fn main() -> glib::ExitCode {
             .title("Hello, World!")
             .build();
 
+        // Show the window.
+        window.present();
+
         let sane = Sane::init(0).unwrap();
         let device_list = sane.get_devices().unwrap();
         for device in device_list {
             println!("{:?}", device);
         }
-
-        // Show the window.
-        window.present();
     });
 
     app.run()
