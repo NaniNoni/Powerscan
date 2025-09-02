@@ -2,8 +2,8 @@ use std::sync::OnceLock;
 
 use gtk::prelude::*;
 use gtk::{Application, ApplicationWindow, glib};
-use gtk4 as gtk;
 use gtk4::glib::clone;
+use gtk4::{self as gtk, CenterBox, Spinner};
 use log::{error, info};
 use sane::{Device, Sane, SaneError};
 use tokio::runtime::Runtime;
@@ -21,17 +21,23 @@ fn main() -> glib::ExitCode {
         .build();
 
     app.connect_activate(|app| {
+        let center_box = CenterBox::new();
+        let spinner = Spinner::new();
+        center_box.set_center_widget(Some(&spinner));
+
         // We create the main window.
         let window = ApplicationWindow::builder()
             .application(app)
             .default_width(320)
             .default_height(200)
-            .title("Hello, World!")
+            .title("Powerscan")
+            .child(&center_box)
             .build();
 
         // Show the window.
         window.present();
 
+        spinner.start();
         let (sender, receiver) = async_channel::bounded::<Result<Vec<Device>, SaneError>>(1);
         tokio_runtime().spawn(clone!(
             #[strong]
@@ -57,6 +63,8 @@ fn main() -> glib::ExitCode {
                         error!("Error retreaving SANE device list: {:?}", e)
                     }
                 }
+
+                spinner.stop();
             }
         });
     });
