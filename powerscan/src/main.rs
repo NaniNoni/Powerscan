@@ -25,6 +25,7 @@ fn main() -> glib::ExitCode {
         for device in device_list {
             println!("{:?}", device);
         }
+        let handle = sane.open("LiDE 220");
     });
 
     app.run()

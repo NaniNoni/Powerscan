@@ -1,9 +1,13 @@
 include!(concat!(env!("OUT_DIR"), "/sane.rs"));
 
 mod device;
+mod handle;
 
-use crate::device::{DeviceType, DeviceVendor};
-use std::ffi::CStr;
+use crate::{
+    device::{DeviceType, DeviceVendor},
+    handle::Handle,
+};
+use std::ffi::{CStr, CString};
 use thiserror::Error;
 
 pub use crate::device::Device;
@@ -18,6 +22,9 @@ pub enum SaneError {
 
     #[error("invalid UTF8 in device string: {0}")]
     Utf8Error(#[from] std::str::Utf8Error),
+
+    #[error("ffi nul error: {0}")]
+    FfiError(#[from] std::ffi::NulError),
 }
 
 impl Sane {
@@ -70,6 +77,18 @@ impl Sane {
             }
 
             Ok(devices)
+        }
+    }
+
+    pub fn open(&self, device_name: &str) -> Result<Handle, SaneError> {
+        let name = CString::new(device_name)?;
+        unsafe {
+            let mut raw: SANE_Handle = std::ptr::null_mut();
+            let status = sane_open(name.as_ptr(), &mut raw);
+            if status != SANE_Status::SANE_STATUS_GOOD {
+                return Err(SaneError::InternalSANE { status });
+            }
+            Ok(Handle { raw })
         }
     }
 }
