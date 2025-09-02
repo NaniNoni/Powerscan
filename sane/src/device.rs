@@ -48,8 +48,6 @@ impl TryFrom<&CStr> for DeviceVendor {
     type Error = std::str::Utf8Error;
 
     fn try_from(value: &CStr) -> Result<Self, Self::Error> {
-        println!("{}", value.to_str()?);
-
         Ok(match value.to_str()? {
             "AGFA" => Self::AGFA,
             "Abaton" => Self::Abaton,

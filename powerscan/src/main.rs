@@ -4,6 +4,7 @@ use gtk::prelude::*;
 use gtk::{Application, ApplicationWindow, glib};
 use gtk4 as gtk;
 use gtk4::glib::clone;
+use log::{error, info};
 use sane::{Device, Sane, SaneError};
 use tokio::runtime::Runtime;
 
@@ -13,6 +14,8 @@ fn tokio_runtime() -> &'static Runtime {
 }
 
 fn main() -> glib::ExitCode {
+    env_logger::init();
+
     let app = Application::builder()
         .application_id("com.github.naninoni.powerscan")
         .build();
@@ -47,11 +50,11 @@ fn main() -> glib::ExitCode {
                 match device_list {
                     Ok(device_list) => {
                         for device in device_list {
-                            println!("{:?}", device);
+                            info!("{:?}", device);
                         }
                     }
                     Err(e) => {
-                        eprintln! {"{e}"};
+                        error!("Error retreaving SANE device list: {:?}", e)
                     }
                 }
             }
