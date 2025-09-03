@@ -101,15 +101,19 @@ impl Drop for Sane {
 
 #[cfg(test)]
 mod tests {
+    use serial_test::serial;
+
     use super::*;
 
     #[test]
+    #[serial]
     fn sane_init() -> Result<(), SaneError> {
         let _sane = Sane::init(0)?;
         Ok(())
     }
 
     #[test]
+    #[serial]
     fn sane_get_devices() -> Result<(), SaneError> {
         let sane = Sane::init(0)?;
         let devices = sane.get_devices()?;
@@ -130,6 +134,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn open_test_device() -> Result<(), SaneError> {
         let sane = Sane::init(0)?;
         let devices = sane.get_devices()?;
