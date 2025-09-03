@@ -92,3 +92,9 @@ impl Sane {
         }
     }
 }
+
+impl Drop for Sane {
+    fn drop(&mut self) {
+        unsafe { sane_exit() }
+    }
+}
