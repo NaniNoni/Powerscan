@@ -98,3 +98,53 @@ impl Drop for Sane {
         unsafe { sane_exit() }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sane_init() -> Result<(), SaneError> {
+        let _sane = Sane::init(0)?;
+        Ok(())
+    }
+
+    #[test]
+    fn sane_get_devices() -> Result<(), SaneError> {
+        let sane = Sane::init(0)?;
+        let devices = sane.get_devices()?;
+
+        assert!(
+            !devices.is_empty(),
+            "Expected at least one device from the test backend"
+        );
+
+        // With the test backend, device names typically look like "test:0"
+        assert!(
+            devices.iter().any(|d| d.name.starts_with("test:")),
+            "Expected a device from the test backend, got: {:?}",
+            devices
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn open_test_device() -> Result<(), SaneError> {
+        let sane = Sane::init(0)?;
+        let devices = sane.get_devices()?;
+        let first = devices
+            .first()
+            .expect("Test backend should expose at least one device");
+
+        // Try to open the first device
+        let handle = sane.open(&first.name)?;
+        assert!(
+            !handle.raw.is_null(),
+            "Expected a valid handle for device {}",
+            first.name
+        );
+
+        Ok(())
+    }
+}
