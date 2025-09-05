@@ -43,7 +43,7 @@ fn main() -> glib::ExitCode {
             #[strong]
             sender,
             async move {
-                let device_list = Sane::init(0).map_or_else(Err, |sane| sane.get_devices());
+                let device_list = Sane::init().map_or_else(Err, |sane| sane.get_devices());
                 sender
                     .send(device_list)
                     .await
