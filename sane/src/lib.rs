@@ -13,8 +13,10 @@ use thiserror::Error;
 
 pub use crate::device::Device;
 
-/// "Safe" SANE interface wrapper. All functions correspond to their respective C `sane_` function.
-pub struct Sane {}
+/// "Safe" SANE interface wrapper
+pub struct Sane {
+    _version_code: i32,
+}
 
 #[derive(Debug, Error)]
 pub enum SaneError {
@@ -29,18 +31,27 @@ pub enum SaneError {
 }
 
 impl Sane {
-    pub fn init(version_code: i32) -> Result<Self, SaneError> {
+    /// This function must be called before any other SANE function can be called.
+    /// The behavior of a SANE backend is undefined if this function is not called first or if the status code returned by [`Sane::init`] is different from [`Ok`].
+    // TODO: research authorization
+    pub fn init() -> Result<Self, SaneError> {
         unsafe {
-            let mut version_code = version_code;
+            let mut version_code = 0;
             let status = sane_init(&mut version_code, None);
             if status != SANE_Status::SANE_STATUS_GOOD {
                 return Err(SaneError::InternalSANE { status });
             }
 
-            Ok(Self {})
+            Ok(Self {
+                _version_code: version_code,
+            })
         }
     }
 
+    /// This function can be used to query the list of devices that are available.
+    /// The returned list is guaranteed to remain unchanged and valid until (a) another call to this function is performed or (b) a call to [`Sane::drop`] is performed.
+    /// This function can be called repeatedly to detect when new devices become available.
+    // TODO: research local only vs remote
     pub fn get_devices(&self) -> Result<Vec<Device>, SaneError> {
         unsafe {
             let mut device_list: *mut *const SANE_Device = std::ptr::null_mut();
@@ -81,6 +92,10 @@ impl Sane {
         }
     }
 
+    /// This function is used to establish a connection to a particular device.
+    /// The name of the device to be opened is passed in argument name.
+    /// If the call completes successfully, a handle for the device is returned.
+    /// As a special case, specifying a zero-length string as the device requests opening the first available device (if there is such a device).
     pub fn open(&self, device_name: &str) -> Result<Handle, SaneError> {
         let name = CString::new(device_name)?;
         unsafe {
@@ -95,6 +110,9 @@ impl Sane {
 }
 
 impl Drop for Sane {
+    /// This function must be called to terminate use of a backend.
+    /// The function will first close all device handles that still might be open (it is recommended to close device handles explicitly through a call to [`Handle::drop`], but backends are required to release all resources upon a call to this function).
+    /// After this function returns, no function other than [`Sane::init`] may be called (regardless of the status value returned by [`Sane::drop`]. Neglecting to call this function may result in some resources not being released properly.
     fn drop(&mut self) {
         unsafe { sane_exit() }
     }
@@ -109,14 +127,14 @@ mod tests {
     #[test]
     #[serial]
     fn sane_init() -> Result<(), SaneError> {
-        let _sane = Sane::init(0)?;
+        let _sane = Sane::init()?;
         Ok(())
     }
 
     #[test]
     #[serial]
     fn sane_get_devices() -> Result<(), SaneError> {
-        let sane = Sane::init(0)?;
+        let sane = Sane::init()?;
         let devices = sane.get_devices()?;
 
         assert!(
@@ -137,7 +155,7 @@ mod tests {
     #[test]
     #[serial]
     fn open_test_device() -> Result<(), SaneError> {
-        let sane = Sane::init(0)?;
+        let sane = Sane::init()?;
         let devices = sane.get_devices()?;
         let first = devices
             .first()

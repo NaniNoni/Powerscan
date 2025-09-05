@@ -14,6 +14,12 @@ pub struct Handle {
 }
 
 impl Handle {
+    /// This function is used to access option descriptors.
+    /// The function returns the option descriptor for option number n of the device represented by the handle.
+    /// Option number 0 is guaranteed to be a valid option.
+    /// Its value is an integer that specifies the number of options that are available for the device handle (the count includes option 0).
+    /// If n is not a valid option index, the function returns [`None`].
+    /// The returned option descriptor is guaranteed to remain valid (and at the returned address) until the device is closed.
     pub fn get_option_descriptor(&self, n: i32) -> Result<Option<SaneOptionDescriptor>, SaneError> {
         unsafe {
             let descriptor_ptr = sane_get_option_descriptor(self.raw, n);
@@ -76,6 +82,10 @@ impl Handle {
         }
     }
 
+    /// This function is used to set or inquire the current value of option number n of the device represented by the handle.
+    /// The manner in which the option is controlled is specified by parameter a.
+    /// The possible values of this parameter are described in more detail below.
+    /// The value of the option is passed through argument v.
     pub fn control_option<T>(
         &self,
         option: i32,
@@ -108,13 +118,30 @@ bitflags! {
     #[derive(Debug)]
     /// A [`bitflags`] struct generated as a safe wrapper around `SANE_INFO_*` constants
     pub struct ControlOptionInfo: i32 {
+        /// This value is returned when setting an option value resulted in a value being selected that does not exactly match the requested value.
+        /// For example, if a scanner can adjust the resolution in increments of 30dpi only, setting the resolution to 307dpi may result in an actual setting of 300dpi.
+        /// When this happens, the bitset returned in *i has this member set.
+        /// In addition, the option value is modified to reflect the actual (rounded) value that was used by the backend.
+        /// Note that inexact values are admissible for strings as well.
+        /// A backend may choose to “round” a string to the closest matching legal string for a constrained string value.
         const INEXACT = crate::SANE_INFO_INEXACT as i32;
+
+        /// The setting of an option may affect the value or availability of one or more other options.
+        /// When this happens, the SANE backend sets this member in *i to indicate that the application should reload all options.
+        /// This member may be set if and only if at least one option changed.
         const RELOAD_OPTIONS = crate::SANE_INFO_RELOAD_OPTIONS as i32;
+
+        /// The setting of an option may affect the parameter values (see sane_get_parameters()).
+        /// If setting an option affects the parameter values, this member will be set in *i.
+        /// Note that this member may be set even if the parameters did not actually change.
+        /// However, it is guaranteed that the parameters never change without this member being set.
         const RELOAD_PARAMS = crate::SANE_INFO_RELOAD_PARAMS as i32;
     }
 }
 
 impl Drop for Handle {
+    /// This function terminates the association between the device handle passed in argument h and the device it represents.
+    /// If the device is presently active, a call to sane_cancel() is performed first. After this function returns, the handle must not be used anymore.
     fn drop(&mut self) {
         unsafe { sane_close(self.raw) }
     }
@@ -131,7 +158,7 @@ mod tests {
     #[test]
     #[serial]
     fn sane_get_option_descriptor() -> Result<(), SaneError> {
-        let sane = Sane::init(0)?;
+        let sane = Sane::init()?;
         let handle = sane.open("test:0")?;
 
         let mut i = 0;
@@ -157,7 +184,7 @@ mod tests {
     #[test]
     #[serial]
     fn sane_control_option() -> Result<(), SaneError> {
-        let sane = Sane::init(0)?;
+        let sane = Sane::init()?;
         let handle = sane.open("test:0")?;
 
         let mut value = 0;
