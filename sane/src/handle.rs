@@ -1,9 +1,11 @@
-use std::ffi::CStr;
+use std::ffi::{CStr, c_void};
+
+use bitflags::bitflags;
 
 use crate::{
-    SANE_Constraint_Type, SANE_Handle, SaneError,
+    SANE_Action, SANE_Constraint_Type, SANE_Handle, SANE_Status, SaneError,
     option_descriptor::{SaneOptionConstaint, SaneOptionDescriptor},
-    sane_close, sane_get_option_descriptor,
+    sane_close, sane_control_option, sane_get_option_descriptor,
 };
 
 // https://sane-project.gitlab.io/standard/api.html#scanner-handle-type
@@ -73,6 +75,43 @@ impl Handle {
             }))
         }
     }
+
+    pub fn control_option<T>(
+        &self,
+        option: i32,
+        action: SANE_Action,
+        value: &mut T,
+    ) -> Result<ControlOptionInfo, SaneError>
+    where
+        T: Clone,
+    {
+        unsafe {
+            let mut info = 0;
+            let status = sane_control_option(
+                self.raw,
+                option,
+                action,
+                value as *mut T as *mut c_void,
+                &mut info,
+            );
+
+            if status != SANE_Status::SANE_STATUS_GOOD {
+                return Err(SaneError::InternalSANE { status });
+            }
+
+            Ok(ControlOptionInfo::from_bits_truncate(info))
+        }
+    }
+}
+
+bitflags! {
+    #[derive(Debug)]
+    /// A [`bitflags`] struct generated as a safe wrapper around `SANE_INFO_*` constants
+    pub struct ControlOptionInfo: i32 {
+        const INEXACT = crate::SANE_INFO_INEXACT as i32;
+        const RELOAD_OPTIONS = crate::SANE_INFO_RELOAD_OPTIONS as i32;
+        const RELOAD_PARAMS = crate::SANE_INFO_RELOAD_PARAMS as i32;
+    }
 }
 
 impl Drop for Handle {
@@ -83,9 +122,11 @@ impl Drop for Handle {
 
 #[cfg(test)]
 mod tests {
+    use std::any::type_name;
+
     use serial_test::serial;
 
-    use crate::{Sane, SaneError};
+    use crate::{Sane, SaneError, handle::ControlOptionInfo};
 
     #[test]
     #[serial]
@@ -109,6 +150,29 @@ mod tests {
 
         // At least the first option must be valid
         assert_ne!(i, 0);
+
+        Ok(())
+    }
+
+    #[test]
+    #[serial]
+    fn sane_control_option() -> Result<(), SaneError> {
+        let sane = Sane::init(0)?;
+        let handle = sane.open("test:0")?;
+
+        let mut value = 0;
+        let info =
+            handle.control_option(0, crate::SANE_Action::SANE_ACTION_GET_VALUE, &mut value)?;
+
+        assert!(
+            value > 0,
+            "Expected positive number of options, got {value}",
+        );
+        assert!(
+            info.is_empty(),
+            "Expected valid {}, got {info:?}",
+            type_name::<ControlOptionInfo>()
+        );
 
         Ok(())
     }
