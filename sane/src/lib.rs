@@ -1,4 +1,10 @@
-include!(concat!(env!("OUT_DIR"), "/sane.rs"));
+// sane/src/lib.rs
+#[allow(non_camel_case_types)]
+mod bindings {
+    include!(concat!(env!("OUT_DIR"), "/sane.rs"));
+}
+
+pub use bindings::*;
 
 mod device;
 mod handle;
