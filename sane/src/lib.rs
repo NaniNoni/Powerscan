@@ -2,6 +2,7 @@ include!(concat!(env!("OUT_DIR"), "/sane.rs"));
 
 mod device;
 mod handle;
+mod option_descriptor;
 
 use crate::{
     device::{DeviceType, DeviceVendor},
