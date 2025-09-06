@@ -9,6 +9,7 @@ pub use bindings::*;
 mod device;
 mod handle;
 mod option_descriptor;
+mod parameters;
 
 use crate::{
     device::{DeviceType, DeviceVendor},

@@ -5,7 +5,8 @@ use bitflags::bitflags;
 use crate::{
     SANE_Action, SANE_Constraint_Type, SANE_Handle, SANE_Status, SaneError,
     option_descriptor::{SaneOptionConstaint, SaneOptionDescriptor},
-    sane_close, sane_control_option, sane_get_option_descriptor,
+    parameters::Parameters,
+    sane_close, sane_control_option, sane_get_option_descriptor, sane_get_parameters,
 };
 
 // https://sane-project.gitlab.io/standard/api.html#scanner-handle-type
@@ -112,6 +113,18 @@ impl Handle {
             Ok(ControlOptionInfo::from_bits_truncate(info))
         }
     }
+
+    pub fn get_parameters(&self) -> Result<Parameters, SaneError> {
+        unsafe {
+            let mut parameters = Default::default();
+            let status = sane_get_parameters(self.raw, &mut parameters);
+            if status != SANE_Status::SANE_STATUS_GOOD {
+                return Err(SaneError::InternalSANE { status });
+            }
+
+            Ok(Parameters::from(parameters))
+        }
+    }
 }
 
 bitflags! {
@@ -153,7 +166,7 @@ mod tests {
 
     use serial_test::serial;
 
-    use crate::{Sane, SaneError, handle::ControlOptionInfo};
+    use crate::{SANE_Frame, Sane, SaneError, handle::ControlOptionInfo, parameters::Parameters};
 
     #[test]
     #[serial]
@@ -199,6 +212,29 @@ mod tests {
             info.is_empty(),
             "Expected valid {}, got {info:?}",
             type_name::<ControlOptionInfo>()
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    #[serial]
+    fn sane_get_parameters() -> Result<(), SaneError> {
+        let sane = Sane::init()?;
+        let handle = sane.open("test:0")?;
+        let params = handle.get_parameters()?;
+        println!("Parameters: {params:?}");
+
+        assert_eq!(
+            params,
+            Parameters {
+                format: SANE_Frame::SANE_FRAME_GRAY,
+                last_frame: true,
+                bytes_per_line: 157,
+                pixels_per_line: 157,
+                lines: 196,
+                depth: 8
+            }
         );
 
         Ok(())
