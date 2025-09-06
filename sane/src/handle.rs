@@ -6,7 +6,7 @@ use crate::{
     SANE_Action, SANE_Constraint_Type, SANE_Handle, SANE_Status, SaneError,
     option_descriptor::{SaneOptionConstaint, SaneOptionDescriptor},
     parameters::Parameters,
-    sane_close, sane_control_option, sane_get_option_descriptor, sane_get_parameters,
+    sane_close, sane_control_option, sane_get_option_descriptor, sane_get_parameters, sane_start,
 };
 
 // https://sane-project.gitlab.io/standard/api.html#scanner-handle-type
@@ -125,6 +125,17 @@ impl Handle {
             Ok(Parameters::from(parameters))
         }
     }
+
+    pub fn start(&self) -> Result<(), SaneError> {
+        unsafe {
+            let status = sane_start(self.raw);
+            if status != SANE_Status::SANE_STATUS_GOOD {
+                return Err(SaneError::InternalSANE { status });
+            }
+
+            Ok(())
+        }
+    }
 }
 
 bitflags! {
@@ -238,5 +249,13 @@ mod tests {
         );
 
         Ok(())
+    }
+
+    #[test]
+    #[serial]
+    fn sane_start() -> Result<(), SaneError> {
+        let sane = Sane::init()?;
+        let handle = sane.open("test:0")?;
+        handle.start()
     }
 }
