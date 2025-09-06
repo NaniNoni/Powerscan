@@ -127,9 +127,15 @@ impl Drop for Sane {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::LazyLock;
+
     use serial_test::serial;
 
     use super::*;
+
+    pub static TEST_DEVICE_NAME: LazyLock<String> = LazyLock::new(|| {
+        std::env::var("POWERSCAN_SANE_TEST_DEVICE").unwrap_or_else(|_| "test:0".to_owned())
+    });
 
     #[test]
     #[serial]
@@ -149,13 +155,6 @@ mod tests {
             "Expected at least one device from the test backend"
         );
 
-        // With the test backend, device names typically look like "test:0"
-        assert!(
-            devices.iter().any(|d| d.name.starts_with("test:")),
-            "Expected a device from the test backend, got: {:?}",
-            devices
-        );
-
         Ok(())
     }
 
@@ -163,17 +162,11 @@ mod tests {
     #[serial]
     fn open_test_device() -> Result<(), SaneError> {
         let sane = Sane::init()?;
-        let devices = sane.get_devices()?;
-        let first = devices
-            .first()
-            .expect("Test backend should expose at least one device");
-
-        // Try to open the first device
-        let handle = sane.open(&first.name)?;
+        let handle = sane.open(&TEST_DEVICE_NAME)?;
         assert!(
             !handle.raw.is_null(),
             "Expected a valid handle for device {}",
-            first.name
+            *TEST_DEVICE_NAME
         );
 
         Ok(())

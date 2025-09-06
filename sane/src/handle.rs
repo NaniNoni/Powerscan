@@ -6,7 +6,8 @@ use crate::{
     SANE_Action, SANE_Constraint_Type, SANE_Handle, SANE_Status, SaneError,
     option_descriptor::{SaneOptionConstaint, SaneOptionDescriptor},
     parameters::Parameters,
-    sane_close, sane_control_option, sane_get_option_descriptor, sane_get_parameters, sane_start,
+    sane_cancel, sane_close, sane_control_option, sane_get_option_descriptor, sane_get_parameters,
+    sane_read, sane_start,
 };
 
 // https://sane-project.gitlab.io/standard/api.html#scanner-handle-type
@@ -136,6 +137,28 @@ impl Handle {
             Ok(())
         }
     }
+
+    pub fn read(&self, maxlen: usize) -> Result<Vec<u8>, SaneError> {
+        let mut buf = Vec::with_capacity(maxlen);
+
+        unsafe {
+            let mut len = 0;
+            let status = sane_read(self.raw, buf.as_mut_ptr(), maxlen as i32, &mut len);
+            if status != SANE_Status::SANE_STATUS_GOOD {
+                return Err(SaneError::InternalSANE { status });
+            }
+
+            buf.set_len(len as usize);
+
+            Ok(buf)
+        }
+    }
+
+    pub fn cancel(&self) {
+        unsafe {
+            sane_cancel(self.raw);
+        }
+    }
 }
 
 bitflags! {
@@ -177,13 +200,16 @@ mod tests {
 
     use serial_test::serial;
 
-    use crate::{SANE_Frame, Sane, SaneError, handle::ControlOptionInfo, parameters::Parameters};
+    use crate::{
+        SANE_Frame, SANE_Status, Sane, SaneError, handle::ControlOptionInfo,
+        parameters::Parameters, tests::TEST_DEVICE_NAME,
+    };
 
     #[test]
     #[serial]
     fn sane_get_option_descriptor() -> Result<(), SaneError> {
         let sane = Sane::init()?;
-        let handle = sane.open("test:0")?;
+        let handle = sane.open(&TEST_DEVICE_NAME)?;
 
         let mut i = 0;
         loop {
@@ -209,7 +235,7 @@ mod tests {
     #[serial]
     fn sane_control_option() -> Result<(), SaneError> {
         let sane = Sane::init()?;
-        let handle = sane.open("test:0")?;
+        let handle = sane.open(&TEST_DEVICE_NAME)?;
 
         let mut value = 0;
         let info =
@@ -232,7 +258,7 @@ mod tests {
     #[serial]
     fn sane_get_parameters() -> Result<(), SaneError> {
         let sane = Sane::init()?;
-        let handle = sane.open("test:0")?;
+        let handle = sane.open(&TEST_DEVICE_NAME)?;
         let params = handle.get_parameters()?;
         println!("Parameters: {params:?}");
 
@@ -255,7 +281,37 @@ mod tests {
     #[serial]
     fn sane_start() -> Result<(), SaneError> {
         let sane = Sane::init()?;
-        let handle = sane.open("test:0")?;
+        let handle = sane.open(&TEST_DEVICE_NAME)?;
         handle.start()
+    }
+
+    #[test]
+    #[serial]
+    fn sane_read() -> Result<(), SaneError> {
+        const CHUNK_SIZE: usize = 512;
+        let sane = Sane::init()?;
+        let handle = sane.open(&TEST_DEVICE_NAME)?;
+        handle.start()?;
+
+        let mut data = Vec::new();
+        loop {
+            match handle.read(CHUNK_SIZE) {
+                Ok(chunk) => {
+                    println!("Chunk: {chunk:?}");
+                    data.extend_from_slice(&chunk);
+                }
+                Err(SaneError::InternalSANE { status }) => {
+                    if status == SANE_Status::SANE_STATUS_EOF {
+                        break;
+                    }
+                }
+                Err(e) => return Err(e),
+            }
+        }
+
+        println!("Scanning data: {data:?}");
+        assert!(!data.is_empty(), "Expected non-empty scan data");
+
+        Ok(())
     }
 }
