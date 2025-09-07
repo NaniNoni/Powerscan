@@ -1,6 +1,6 @@
 use std::ffi::CStr;
 
-/// https://sane-project.gitlab.io/standard/api.html#device-descriptor-type
+/// <https://sane-project.gitlab.io/standard/api.html#device-descriptor-type>
 #[derive(Debug, PartialEq, Eq)]
 pub struct Device {
     pub name: String,

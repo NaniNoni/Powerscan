@@ -25,12 +25,15 @@ pub struct Sane {
     _version_code: i32,
 }
 
+/// Error type returned by all [`Sane`] functions that can fail
 #[derive(Debug, Error)]
 pub enum SaneError {
+    /// Any [`SANE_Status`] which doesn't equal [`SANE_Status::SANE_STATUS_GOOD`]
     #[error("internal SANE error, status: {status:?}")]
     InternalSANE { status: SANE_Status },
 
-    #[error("invalid UTF8 in device string: {0}")]
+    /// UTF8 Error most likely from converting C string to Rust ones
+    #[error("invalid UTF8: {0}")]
     Utf8Error(#[from] std::str::Utf8Error),
 
     #[error("ffi nul error: {0}")]
@@ -38,8 +41,7 @@ pub enum SaneError {
 }
 
 impl Sane {
-    /// This function must be called before any other SANE function can be called.
-    /// The behavior of a SANE backend is undefined if this function is not called first or if the status code returned by [`Sane::init`] is different from [`Ok`].
+    /// <https://sane-project.gitlab.io/standard/api.html#sane-init>
     // TODO: research authorization
     pub fn init() -> Result<Self, SaneError> {
         unsafe {
@@ -55,9 +57,7 @@ impl Sane {
         }
     }
 
-    /// This function can be used to query the list of devices that are available.
-    /// The returned list is guaranteed to remain unchanged and valid until (a) another call to this function is performed or (b) a call to [`Sane::drop`] is performed.
-    /// This function can be called repeatedly to detect when new devices become available.
+    /// <https://sane-project.gitlab.io/standard/api.html#sane-get-devices>
     // TODO: research local only vs remote
     pub fn get_devices(&self) -> Result<Vec<Device>, SaneError> {
         unsafe {
@@ -99,10 +99,7 @@ impl Sane {
         }
     }
 
-    /// This function is used to establish a connection to a particular device.
-    /// The name of the device to be opened is passed in argument name.
-    /// If the call completes successfully, a handle for the device is returned.
-    /// As a special case, specifying a zero-length string as the device requests opening the first available device (if there is such a device).
+    /// <https://sane-project.gitlab.io/standard/api.html#sane-open>
     pub fn open(&self, device_name: &str) -> Result<Handle, SaneError> {
         let name = CString::new(device_name)?;
         unsafe {
@@ -117,9 +114,7 @@ impl Sane {
 }
 
 impl Drop for Sane {
-    /// This function must be called to terminate use of a backend.
-    /// The function will first close all device handles that still might be open (it is recommended to close device handles explicitly through a call to [`Handle::drop`], but backends are required to release all resources upon a call to this function).
-    /// After this function returns, no function other than [`Sane::init`] may be called (regardless of the status value returned by [`Sane::drop`]. Neglecting to call this function may result in some resources not being released properly.
+    /// <https://sane-project.gitlab.io/standard/api.html#sane-exit>
     fn drop(&mut self) {
         unsafe { sane_exit() }
     }

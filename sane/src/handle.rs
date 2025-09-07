@@ -10,18 +10,13 @@ use crate::{
     sane_read, sane_start,
 };
 
-// https://sane-project.gitlab.io/standard/api.html#scanner-handle-type
+/// <https://sane-project.gitlab.io/standard/api.html#scanner-handle-type>
 pub struct Handle {
     pub raw: SANE_Handle,
 }
 
 impl Handle {
-    /// This function is used to access option descriptors.
-    /// The function returns the option descriptor for option number n of the device represented by the handle.
-    /// Option number 0 is guaranteed to be a valid option.
-    /// Its value is an integer that specifies the number of options that are available for the device handle (the count includes option 0).
-    /// If n is not a valid option index, the function returns [`None`].
-    /// The returned option descriptor is guaranteed to remain valid (and at the returned address) until the device is closed.
+    /// <https://sane-project.gitlab.io/standard/api.html#sane-get-option-descriptor>
     pub fn get_option_descriptor(&self, n: i32) -> Result<Option<SaneOptionDescriptor>, SaneError> {
         unsafe {
             let descriptor_ptr = sane_get_option_descriptor(self.raw, n);
@@ -37,12 +32,10 @@ impl Handle {
                 desc: CStr::from_ptr(descriptor.desc).to_str()?.to_owned(),
                 type_: descriptor.type_,
                 unit: descriptor.unit,
-                size: descriptor.size,
                 cap: descriptor.cap,
                 constraint: match descriptor.constraint_type {
                     SANE_Constraint_Type::SANE_CONSTRAINT_NONE => None,
                     SANE_Constraint_Type::SANE_CONSTRAINT_RANGE => {
-                        println!("RANGE");
                         let range = *descriptor.constraint.range;
                         Some(SaneOptionConstaint::Range {
                             min: range.min,
@@ -53,7 +46,6 @@ impl Handle {
                     // The first element in that list is an integer (SANE_Int) that specifies the length of the list (not counting the length itself).
                     // The remaining elements in the list are interpreted according to the type of the option value (SANE_TYPE_INT or SANE_TYPE_FIXED).
                     SANE_Constraint_Type::SANE_CONSTRAINT_WORD_LIST => {
-                        println!("WORD_LIST");
                         let word_list = descriptor.constraint.word_list;
                         let length = *word_list as usize;
                         // Add 1 because the slice starts after the length field
@@ -61,7 +53,6 @@ impl Handle {
                         Some(SaneOptionConstaint::WordList(slice.to_vec()))
                     }
                     SANE_Constraint_Type::SANE_CONSTRAINT_STRING_LIST => {
-                        println!("STRING_LIST");
                         let string_list = descriptor.constraint.string_list;
                         let mut strings = Vec::new();
                         let mut i = 0;
@@ -84,10 +75,7 @@ impl Handle {
         }
     }
 
-    /// This function is used to set or inquire the current value of option number n of the device represented by the handle.
-    /// The manner in which the option is controlled is specified by parameter a.
-    /// The possible values of this parameter are described in more detail below.
-    /// The value of the option is passed through argument v.
+    /// <https://sane-project.gitlab.io/standard/api.html#sane-control-option>
     pub fn control_option<T>(
         &self,
         option: i32,
@@ -115,6 +103,7 @@ impl Handle {
         }
     }
 
+    /// <https://sane-project.gitlab.io/standard/api.html#sane-get-parameters>
     pub fn get_parameters(&self) -> Result<Parameters, SaneError> {
         unsafe {
             let mut parameters = Default::default();
@@ -127,6 +116,7 @@ impl Handle {
         }
     }
 
+    /// <https://sane-project.gitlab.io/standard/api.html#sane-start>
     pub fn start(&self) -> Result<(), SaneError> {
         unsafe {
             let status = sane_start(self.raw);
@@ -138,6 +128,7 @@ impl Handle {
         }
     }
 
+    /// <https://sane-project.gitlab.io/standard/api.html#sane-read>
     pub fn read(&self, maxlen: usize) -> Result<Vec<u8>, SaneError> {
         let mut buf = Vec::with_capacity(maxlen);
 
@@ -165,30 +156,17 @@ bitflags! {
     #[derive(Debug)]
     /// A [`bitflags`] struct generated as a safe wrapper around `SANE_INFO_*` constants
     pub struct ControlOptionInfo: i32 {
-        /// This value is returned when setting an option value resulted in a value being selected that does not exactly match the requested value.
-        /// For example, if a scanner can adjust the resolution in increments of 30dpi only, setting the resolution to 307dpi may result in an actual setting of 300dpi.
-        /// When this happens, the bitset returned in *i has this member set.
-        /// In addition, the option value is modified to reflect the actual (rounded) value that was used by the backend.
-        /// Note that inexact values are admissible for strings as well.
-        /// A backend may choose to “round” a string to the closest matching legal string for a constrained string value.
+        /// <https://sane-project.gitlab.io/standard/api.html?highlight=sane_info#c.SANE_INFO_INEXACT>
         const INEXACT = crate::SANE_INFO_INEXACT as i32;
-
-        /// The setting of an option may affect the value or availability of one or more other options.
-        /// When this happens, the SANE backend sets this member in *i to indicate that the application should reload all options.
-        /// This member may be set if and only if at least one option changed.
+        /// <https://sane-project.gitlab.io/standard/api.html?highlight=sane_info#c.SANE_INFO_RELOAD_OPTIONS>
         const RELOAD_OPTIONS = crate::SANE_INFO_RELOAD_OPTIONS as i32;
-
-        /// The setting of an option may affect the parameter values (see sane_get_parameters()).
-        /// If setting an option affects the parameter values, this member will be set in *i.
-        /// Note that this member may be set even if the parameters did not actually change.
-        /// However, it is guaranteed that the parameters never change without this member being set.
+        /// <https://sane-project.gitlab.io/standard/api.html?highlight=sane_info#c.SANE_INFO_RELOAD_PARAMS>
         const RELOAD_PARAMS = crate::SANE_INFO_RELOAD_PARAMS as i32;
     }
 }
 
 impl Drop for Handle {
-    /// This function terminates the association between the device handle passed in argument h and the device it represents.
-    /// If the device is presently active, a call to sane_cancel() is performed first. After this function returns, the handle must not be used anymore.
+    /// <https://sane-project.gitlab.io/standard/api.html?highlight=sane_info#sane-close>
     fn drop(&mut self) {
         unsafe { sane_close(self.raw) }
     }

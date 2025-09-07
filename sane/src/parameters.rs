@@ -1,5 +1,6 @@
 use crate::{SANE_Frame, SANE_Parameters};
 
+/// A wrapper around [`SANE_Parameters`]
 #[derive(Debug, PartialEq, Eq)]
 pub struct Parameters {
     pub format: SANE_Frame,
