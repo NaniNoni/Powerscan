@@ -21,6 +21,7 @@ use thiserror::Error;
 pub use crate::device::Device;
 
 /// "Safe" SANE interface wrapper
+#[derive(Debug, Default)]
 pub struct Sane {
     _version_code: i32,
 }
