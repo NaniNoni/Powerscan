@@ -108,7 +108,7 @@ impl Sane {
     pub fn open(&self, device_name: &str) -> Result<Handle, SaneError> {
         let name = CString::new(device_name)?;
         unsafe {
-            let mut raw: SANE_Handle = std::ptr::null_mut();
+            let mut raw = Default::default();
             let status = sane_open(name.as_ptr(), &mut raw);
             if status != SANE_Status::SANE_STATUS_GOOD {
                 return Err(SaneError::InternalSANE { status });
