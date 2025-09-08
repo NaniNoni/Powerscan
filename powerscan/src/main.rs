@@ -1,107 +1,145 @@
-use gtk::glib::clone;
-use gtk::prelude::{BoxExt, ButtonExt, GtkWindowExt};
-use relm4::{ComponentParts, ComponentSender, RelmApp, RelmWidgetExt, SimpleComponent, gtk};
+use log::{debug, error};
+use relm4::gtk::prelude::*;
+use relm4::loading_widgets::LoadingWidgets;
+use relm4::prelude::*;
+use relm4::{AsyncComponentSender, RelmApp, RelmWidgetExt, gtk, view};
+use sane::{SANE_Status, Sane, SaneError};
 
 struct AppModel {
-    counter: u8,
+    sane: Sane,
+    devices: Vec<sane::Device>,
 }
 
 #[derive(Debug)]
 enum AppMsg {
-    Increment,
-    Decrement,
+    StartScan,
+    ScanError(SaneError),
+    ScanFinished(Vec<u8>),
 }
 
-struct AppWidgets {
-    label: gtk::Label,
-}
-
-impl SimpleComponent for AppModel {
-    /// The type of the messages that this component can receive.
-    type Input = AppMsg;
-    /// The type of the messages that this component can send.
-    type Output = ();
-    /// The type of data with which this component will be initialized.
+#[relm4::component(async)]
+impl AsyncComponent for AppModel {
     type Init = u8;
-    /// The root GTK widget that this component will create.
-    type Root = gtk::Window;
-    /// A data structure that contains the widgets that you will need to update.
-    type Widgets = AppWidgets;
+    type Input = AppMsg;
+    type Output = ();
+    type CommandOutput = ();
 
-    fn init_root() -> Self::Root {
-        gtk::Window::builder()
-            .title("Simple app")
-            .default_width(300)
-            .default_height(100)
-            .build()
-    }
+    view! {
+        gtk::Window {
+            set_title: Some("Powerscan"),
+            set_default_width: 300,
+            set_default_height: 100,
 
-    /// Initialize the UI and model.
-    fn init(
-        counter: Self::Init,
-        window: Self::Root,
-        sender: ComponentSender<Self>,
-    ) -> relm4::ComponentParts<Self> {
-        let model = AppModel { counter };
+            gtk::Box {
+                set_spacing: 5,
+                set_margin_all: 5,
 
-        let vbox = gtk::Box::builder()
-            .orientation(gtk::Orientation::Vertical)
-            .spacing(5)
-            .build();
+                gtk::Button::with_label("Scan") {
+                    connect_clicked[sender] => move |_| {
+                        sender.input(AppMsg::StartScan);
+                    }
+                },
 
-        let inc_button = gtk::Button::with_label("Increment");
-        let dec_button = gtk::Button::with_label("Decrement");
-
-        let label = gtk::Label::new(Some(&format!("Counter: {}", model.counter)));
-        label.set_margin_all(5);
-
-        window.set_child(Some(&vbox));
-        vbox.set_margin_all(5);
-        vbox.append(&inc_button);
-        vbox.append(&dec_button);
-        vbox.append(&label);
-
-        inc_button.connect_clicked(clone!(
-            #[strong]
-            sender,
-            move |_| {
-                sender.input(AppMsg::Increment);
-            }
-        ));
-
-        dec_button.connect_clicked(clone!(
-            #[strong]
-            sender,
-            move |_| {
-                sender.input(AppMsg::Decrement);
-            }
-        ));
-
-        let widgets = AppWidgets { label };
-
-        ComponentParts { model, widgets }
-    }
-
-    fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>) {
-        match message {
-            AppMsg::Increment => {
-                self.counter = self.counter.wrapping_add(1);
-            }
-            AppMsg::Decrement => {
-                self.counter = self.counter.wrapping_sub(1);
+                gtk::Label {
+                    #[watch]
+                    set_label: &format!("Devices: {:?}", model.devices),
+                    set_margin_all: 5,
+                }
             }
         }
     }
 
-    /// Update the view to represent the updated model.
-    fn update_view(&self, widgets: &mut Self::Widgets, _sender: ComponentSender<Self>) {
-        widgets
-            .label
-            .set_label(&format!("Counter: {}", self.counter));
+    fn init_loading_widgets(root: Self::Root) -> Option<LoadingWidgets> {
+        view! {
+            #[local]
+            root {
+                set_title: Some("Simple app"),
+                set_default_size: (300, 100),
+
+                // This will be removed automatically by
+                // LoadingWidgets when the full view has loaded
+                #[name(spinner)]
+                gtk::Spinner {
+                    start: (),
+                    set_halign: gtk::Align::Center,
+                }
+            }
+        }
+        Some(LoadingWidgets::new(root, spinner))
+    }
+
+    // Initialize the component.
+    async fn init(
+        _counter: Self::Init,
+        root: Self::Root,
+        sender: AsyncComponentSender<Self>,
+    ) -> AsyncComponentParts<Self> {
+        let (sane, devices) = relm4::spawn(async move {
+            // TODO: error handling
+            let sane = Sane::init().unwrap();
+            let devices: Vec<sane::Device> = sane.get_devices().unwrap();
+
+            (sane, devices)
+        })
+        .await
+        .unwrap();
+
+        let model = AppModel { sane, devices };
+
+        // Insert the code generation of the view! macro here
+        let widgets = view_output!();
+
+        AsyncComponentParts { model, widgets }
+    }
+
+    async fn update(
+        &mut self,
+        msg: Self::Input,
+        sender: AsyncComponentSender<Self>,
+        _root: &Self::Root,
+    ) {
+        match msg {
+            AppMsg::StartScan => {
+                // let devices = self.devices.clone();
+                let sane = self.sane.clone();
+
+                relm4::spawn(async move {
+                    const CHUNK_SIZE: usize = 512;
+                    let handle = sane.open("genesys:libusb:001:007").unwrap();
+                    handle.start().unwrap();
+
+                    let mut data = Vec::new();
+                    loop {
+                        match handle.read(CHUNK_SIZE) {
+                            Ok(chunk) => {
+                                println!("Chunk: {chunk:?}");
+                                data.extend_from_slice(&chunk);
+                            }
+                            Err(SaneError::InternalSANE { status }) => {
+                                if status == SANE_Status::SANE_STATUS_EOF {
+                                    break;
+                                }
+                            }
+                            Err(e) => sender.input(AppMsg::ScanError(e)),
+                        }
+                    }
+
+                    sender.input(AppMsg::ScanFinished(data))
+                })
+                .await
+                .unwrap()
+            }
+            AppMsg::ScanError(e) => {
+                error!("Error while scanning: {e}");
+            }
+            AppMsg::ScanFinished(data) => {
+                debug!("Finished scanning: {data:?}");
+            }
+        }
     }
 }
 
 fn main() {
     let app = RelmApp::new("relm4.test.simple_manual");
-    app.run::<AppModel>(0);
+    app.run_async::<AppModel>(0);
 }
