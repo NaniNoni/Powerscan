@@ -4,6 +4,8 @@ mod bindings {
     include!(concat!(env!("OUT_DIR"), "/sane.rs"));
 }
 
+// TODO: remove this by implementing a proper exported Rust type
+pub use bindings::SANE_Status;
 use bindings::*;
 
 mod device;
@@ -21,7 +23,9 @@ use thiserror::Error;
 pub use crate::device::Device;
 
 /// "Safe" SANE interface wrapper
-#[derive(Debug, Default)]
+/// This type is [`Clone`], as it barely stores any state, and mostly exists as a container for the
+/// C SANE functions.
+#[derive(Debug, Clone, Default)]
 pub struct Sane {
     _version_code: i32,
 }

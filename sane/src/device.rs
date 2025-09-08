@@ -1,7 +1,7 @@
 use std::ffi::CStr;
 
 /// <https://sane-project.gitlab.io/standard/api.html#device-descriptor-type>
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Device {
     pub name: String,
     pub vendor: DeviceVendor,
@@ -10,7 +10,7 @@ pub struct Device {
 }
 
 #[allow(clippy::upper_case_acronyms)]
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeviceVendor {
     AGFA,
     Abaton,
@@ -83,7 +83,7 @@ impl TryFrom<&CStr> for DeviceVendor {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeviceType {
     FilmScanner,
     FlatbedScanner,
