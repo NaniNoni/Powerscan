@@ -105,7 +105,7 @@ impl AsyncComponent for AppModel {
 
                 relm4::spawn(async move {
                     const CHUNK_SIZE: usize = 512;
-                    let handle = sane.open("genesys:libusb:001:007").unwrap();
+                    let handle = sane.open("test:0").unwrap();
                     handle.start().unwrap();
 
                     let mut data = Vec::new();
