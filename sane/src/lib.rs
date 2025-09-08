@@ -85,9 +85,9 @@ impl Sane {
 
                     let device = &*device_ptr;
 
-                    let name = CStr::from_ptr(device.name).to_string_lossy().into_owned();
+                    let name = CStr::from_ptr(device.name).to_str()?.to_owned();
                     let vendor = DeviceVendor::try_from(CStr::from_ptr(device.vendor))?;
-                    let model = CStr::from_ptr(device.model).to_string_lossy().into_owned();
+                    let model = CStr::from_ptr(device.model).to_str()?.to_owned();
                     let type_ = DeviceType::try_from(CStr::from_ptr(device.type_))?;
 
                     devices.push(Device {
