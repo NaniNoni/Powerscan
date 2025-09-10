@@ -1,145 +1,90 @@
-use log::{debug, error};
-use relm4::gtk::prelude::*;
-use relm4::loading_widgets::LoadingWidgets;
-use relm4::prelude::*;
-use relm4::{AsyncComponentSender, RelmApp, RelmWidgetExt, gtk, view};
-use sane::{SANE_Status, Sane, SaneError};
+use iced::widget::{Button, button, container, scrollable, text};
+use iced::{Length, Size, Task, Theme, alignment};
 
-struct AppModel {
-    sane: Sane,
-    devices: Vec<sane::Device>,
+use iced_aw::menu::{self, Item, Menu};
+use iced_aw::{menu_bar, menu_items};
+
+pub fn main() -> iced::Result {
+    env_logger::init();
+
+    iced::application(App::title, App::update, App::view)
+        .theme(App::theme)
+        .font(iced_fonts::REQUIRED_FONT_BYTES)
+        .window_size(Size::new(1000.0, 600.0))
+        .run()
 }
 
-#[derive(Debug)]
-enum AppMsg {
-    StartScan,
-    ScanError(SaneError),
-    ScanFinished(Vec<u8>),
+#[derive(Debug, Clone)]
+enum Message {
+    /// Used to create a [`Task::none`].
+    /// This can be useful to make disabled buttons look like clickable ones.
+    None,
+    /// Message to exit the app
+    Quit,
 }
 
-#[relm4::component(async)]
-impl AsyncComponent for AppModel {
-    type Init = u8;
-    type Input = AppMsg;
-    type Output = ();
-    type CommandOutput = ();
+struct App {
+    title: String,
+    theme: iced::Theme,
+}
 
-    view! {
-        gtk::Window {
-            set_title: Some("Powerscan"),
-            set_default_width: 300,
-            set_default_height: 100,
-
-            gtk::Box {
-                set_spacing: 5,
-                set_margin_all: 5,
-
-                gtk::Button::with_label("Scan") {
-                    connect_clicked[sender] => move |_| {
-                        sender.input(AppMsg::StartScan);
-                    }
-                },
-
-                gtk::Label {
-                    #[watch]
-                    set_label: &format!("Devices: {:?}", model.devices),
-                    set_margin_all: 5,
-                }
-            }
-        }
-    }
-
-    fn init_loading_widgets(root: Self::Root) -> Option<LoadingWidgets> {
-        view! {
-            #[local]
-            root {
-                set_title: Some("Simple app"),
-                set_default_size: (300, 100),
-
-                // This will be removed automatically by
-                // LoadingWidgets when the full view has loaded
-                #[name(spinner)]
-                gtk::Spinner {
-                    start: (),
-                    set_halign: gtk::Align::Center,
-                }
-            }
-        }
-        Some(LoadingWidgets::new(root, spinner))
-    }
-
-    // Initialize the component.
-    async fn init(
-        _counter: Self::Init,
-        root: Self::Root,
-        sender: AsyncComponentSender<Self>,
-    ) -> AsyncComponentParts<Self> {
-        let (sane, devices) = relm4::spawn(async move {
-            // TODO: error handling
-            let sane = Sane::init().unwrap();
-            let devices: Vec<sane::Device> = sane.get_devices().unwrap();
-
-            (sane, devices)
-        })
-        .await
-        .unwrap();
-
-        let model = AppModel { sane, devices };
-
-        // Insert the code generation of the view! macro here
-        let widgets = view_output!();
-
-        AsyncComponentParts { model, widgets }
-    }
-
-    async fn update(
-        &mut self,
-        msg: Self::Input,
-        sender: AsyncComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
-        match msg {
-            AppMsg::StartScan => {
-                // let devices = self.devices.clone();
-                let sane = self.sane.clone();
-
-                relm4::spawn(async move {
-                    const CHUNK_SIZE: usize = 512;
-                    let handle = sane.open("test:0").unwrap();
-                    handle.start().unwrap();
-
-                    let mut data = Vec::new();
-                    loop {
-                        match handle.read(CHUNK_SIZE) {
-                            Ok(chunk) => {
-                                println!("Chunk: {chunk:?}");
-                                data.extend_from_slice(&chunk);
-                            }
-                            Err(SaneError::InternalSANE { status }) => {
-                                if status == SANE_Status::SANE_STATUS_EOF {
-                                    break;
-                                }
-                            }
-                            Err(e) => sender.input(AppMsg::ScanError(e)),
-                        }
-                    }
-
-                    sender.input(AppMsg::ScanFinished(data))
-                })
-                .await
-                .unwrap()
-            }
-            AppMsg::ScanError(e) => {
-                error!("Error while scanning: {e}");
-            }
-            AppMsg::ScanFinished(data) => {
-                debug!("Finished scanning: {data:?}");
-            }
+impl Default for App {
+    fn default() -> Self {
+        Self {
+            title: "Powerscan".to_string(),
+            theme: iced::Theme::Light,
         }
     }
 }
 
-fn main() {
-    let app = RelmApp::new("relm4.test.simple_manual");
-    app.run_async::<AppModel>(0);
+impl App {
+    fn title(&self) -> String {
+        self.title.clone()
+    }
+
+    fn update(&mut self, message: Message) -> Task<Message> {
+        match message {
+            Message::None => Task::none(),
+            Message::Quit => iced::exit(),
+        }
+    }
+
+    fn view(&self) -> iced::Element<'_, Message> {
+        let menu_from_items = |items| Menu::new(items).max_width(180.0).offset(0.0).spacing(5.0);
+
+        #[rustfmt::skip]
+        let menu_bar = menu_bar!(
+            (base_button("File", Message::None), {
+                menu_from_items(menu_items!(
+                    (labeled_button("Quit", Message::Quit))
+                ))
+            })
+        )
+        .draw_path(menu::DrawPath::Backdrop);
+
+        let layout = iced::widget::column![menu_bar];
+
+        container(scrollable(layout))
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into()
+    }
+
+    fn theme(&self) -> Theme {
+        self.theme.clone()
+    }
+}
+
+fn base_button(
+    label: &str,
+    msg: Message,
+) -> button::Button<'_, Message, iced::Theme, iced::Renderer> {
+    Button::new(text(label).align_y(alignment::Vertical::Center)).on_press(msg)
+}
+
+fn labeled_button(
+    label: &str,
+    msg: Message,
+) -> button::Button<'_, Message, iced::Theme, iced::Renderer> {
+    base_button(label, msg).width(Length::Fill)
 }

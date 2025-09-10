@@ -5,7 +5,8 @@ edition = "2024"
 
 [dependencies]
 env_logger = "0.11.8"
+iced = "0.13.1"
+iced_aw = { version = "0.12.2", features = ["menu", "quad"] }
+iced_fonts = "0.2.1"
 log = "0.4.27"
-relm4 = "0.10.0"
-relm4-components = "0.10.0"
 sane = { path = "../sane/" }
