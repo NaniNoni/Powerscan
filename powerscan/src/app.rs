@@ -10,6 +10,7 @@ use cosmic::prelude::*;
 use cosmic::widget::{self, icon, menu, nav_bar};
 use cosmic::{cosmic_theme, theme};
 use futures_util::SinkExt;
+use sane::Sane;
 use std::collections::HashMap;
 
 const REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");
@@ -28,11 +29,17 @@ pub struct AppModel {
     key_binds: HashMap<menu::KeyBind, MenuAction>,
     // Configuration data that persists between application runs.
     config: Config,
+    sane: Sane,
+    devices: Vec<sane::Device>,
+    selected_device: Option<sane::Device>,
 }
 
 /// Messages emitted by the application and its widgets.
 #[derive(Debug, Clone)]
 pub enum Message {
+    Quit,
+    SaneReady(Result<(Sane, Vec<sane::Device>), String>),
+    SelectDevice(usize),
     OpenRepositoryUrl,
     SubscriptionChannel,
     ToggleContextPage(ContextPage),
@@ -87,7 +94,7 @@ impl cosmic::Application for AppModel {
             .icon(icon::from_name("applications-games-symbolic"));
 
         // Construct the app model with the runtime's core.
-        let mut app = AppModel {
+        let app = AppModel {
             core,
             context_page: ContextPage::default(),
             nav,
@@ -105,23 +112,64 @@ impl cosmic::Application for AppModel {
                     }
                 })
                 .unwrap_or_default(),
+            sane: Sane::default(),
+            devices: Vec::new(),
+            selected_device: None,
         };
 
-        // Create a startup command that sets the window title.
-        let command = app.update_title();
+        let sane_task = cosmic::task::future(async {
+            // TODO: figure out nicer error mapping
+            let result = tokio::task::spawn_blocking(move || {
+                let sane = Sane::init().map_err(|e| e.to_string())?;
+                let devices = sane.get_devices().map_err(|e| e.to_string())?;
+                Ok((sane, devices))
+            })
+            .await
+            .unwrap_or_else(|e| Err(format!("tokio join error: {e}")));
 
-        (app, command)
+            Message::SaneReady(result)
+        });
+
+        // Create a startup command that sets the window title.
+        // let command = app.update_title();
+
+        (app, sane_task)
     }
 
     /// Elements to pack at the start of the header bar.
     fn header_start(&'_ self) -> Vec<Element<'_, Self::Message>> {
-        let menu_bar = menu::bar(vec![menu::Tree::with_children(
+        // Build submenu items for devices
+        let device_items = self
+            .devices
+            .iter()
+            .enumerate()
+            .map(|(i, device)| {
+                menu::Item::Button(device.name.clone(), None, MenuAction::SelectDevice(i))
+            })
+            .collect();
+
+        // File menu with a "Select Source" submenu
+        let file_menu = menu::Tree::with_children(
+            menu::root(fl!("file")).apply(Element::from),
+            menu::items(
+                &self.key_binds,
+                vec![
+                    menu::Item::Button(fl!("quit"), None, MenuAction::Quit),
+                    menu::Item::Folder(fl!("select-source"), device_items),
+                ],
+            ),
+        );
+
+        // View menu
+        let view_menu = menu::Tree::with_children(
             menu::root(fl!("view")).apply(Element::from),
             menu::items(
                 &self.key_binds,
                 vec![menu::Item::Button(fl!("about"), None, MenuAction::About)],
             ),
-        )]);
+        );
+
+        let menu_bar = menu::bar(vec![file_menu, view_menu]);
 
         vec![menu_bar.into()]
     }
@@ -197,6 +245,18 @@ impl cosmic::Application for AppModel {
     /// on the application's async runtime.
     fn update(&mut self, message: Self::Message) -> Task<cosmic::Action<Self::Message>> {
         match message {
+            // TODO: quit the app
+            Message::Quit => {}
+            Message::SaneReady(Ok((sane, devices))) => {
+                self.sane = sane;
+                self.devices = devices;
+            }
+            Message::SaneReady(Err(e)) => {}
+            Message::SelectDevice(device_index) => {
+                // TODO: avoid cloning
+                self.selected_device = self.devices.get(device_index).cloned();
+                println!("{:?}", self.selected_device);
+            }
             Message::OpenRepositoryUrl => {
                 _ = open::that_detached(REPOSITORY);
             }
@@ -308,6 +368,8 @@ pub enum ContextPage {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MenuAction {
     About,
+    Quit,
+    SelectDevice(usize),
 }
 
 impl menu::action::MenuAction for MenuAction {
@@ -316,6 +378,8 @@ impl menu::action::MenuAction for MenuAction {
     fn message(&self) -> Self::Message {
         match self {
             MenuAction::About => Message::ToggleContextPage(ContextPage::About),
+            MenuAction::SelectDevice(device_index) => Message::SelectDevice(*device_index),
+            MenuAction::Quit => Message::Quit,
         }
     }
 }
