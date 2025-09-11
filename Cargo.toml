@@ -1,3 +1,6 @@
 [workspace]
+members = [
+    "powerscan",
+    "sane",
+]
 resolver = "3"
-members = ["powerscan", "sane"]
