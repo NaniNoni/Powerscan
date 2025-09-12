@@ -29,9 +29,11 @@ pub struct AppModel {
     key_binds: HashMap<menu::KeyBind, MenuAction>,
     // Configuration data that persists between application runs.
     config: Config,
-    sane: Sane,
+
+    // These fields must be declared before sane due to Drop order.
     devices: Vec<sane::Device>,
-    selected_device: Option<sane::Device>,
+    selected_device: Option<sane::Handle>,
+    sane: Sane,
 }
 
 /// Messages emitted by the application and its widgets.
@@ -103,10 +105,10 @@ impl cosmic::Application for AppModel {
             config: cosmic_config::Config::new(Self::APP_ID, Config::VERSION)
                 .map(|context| match Config::get_entry(&context) {
                     Ok(config) => config,
-                    Err((_errors, config)) => {
-                        // for why in errors {
-                        //     tracing::error!(%why, "error loading app config");
-                        // }
+                    Err((errors, config)) => {
+                        for why in errors {
+                            tracing::error!(%why, "error loading app config");
+                        }
 
                         config
                     }
@@ -142,9 +144,16 @@ impl cosmic::Application for AppModel {
         let device_items = self
             .devices
             .iter()
+            // TODO: support other types of devices
+            .filter(|device| device.type_ == sane::DeviceType::FlatbedScanner)
             .enumerate()
             .map(|(i, device)| {
-                menu::Item::Button(device.name.clone(), None, MenuAction::SelectDevice(i))
+                menu::Item::CheckBox(
+                    device.model.clone(),
+                    None,
+                    false,
+                    MenuAction::SelectDevice(i),
+                )
             })
             .collect();
 
@@ -230,9 +239,9 @@ impl cosmic::Application for AppModel {
             self.core()
                 .watch_config::<Config>(Self::APP_ID)
                 .map(|update| {
-                    // for why in update.errors {
-                    //     tracing::error!(?why, "app config error");
-                    // }
+                    for why in update.errors {
+                        tracing::error!(?why, "app config error");
+                    }
 
                     Message::UpdateConfig(update.config)
                 }),
@@ -251,12 +260,16 @@ impl cosmic::Application for AppModel {
                 self.sane = sane;
                 self.devices = devices;
             }
-            Message::SaneReady(Err(e)) => {}
-            Message::SelectDevice(device_index) => {
-                // TODO: avoid cloning
-                self.selected_device = self.devices.get(device_index).cloned();
-                println!("{:?}", self.selected_device);
+            Message::SaneReady(Err(e)) => {
+                tracing::error!("Error initializing SANE: {e:?}");
             }
+            Message::SelectDevice(device_index) => {
+                // TODO: error handling
+                let device = self.devices.get(device_index).unwrap();
+                tracing::info!("Opening device: {device:?}");
+                self.selected_device = self.sane.open(&device.name).ok();
+            }
+
             Message::OpenRepositoryUrl => {
                 _ = open::that_detached(REPOSITORY);
             }
