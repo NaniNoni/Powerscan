@@ -4,7 +4,14 @@ mod app;
 mod config;
 mod i18n;
 
+use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+
 fn main() -> cosmic::iced::Result {
+    tracing_subscriber::registry()
+        .with(fmt::layer())
+        .with(EnvFilter::from_default_env())
+        .init();
+
     // Get the system's preferred languages.
     let requested_languages = i18n_embed::DesktopLanguageRequester::requested_languages();
 
