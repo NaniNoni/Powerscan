@@ -13,14 +13,13 @@ mod handle;
 mod option_descriptor;
 mod parameters;
 
-use crate::{
-    device::{DeviceType, DeviceVendor},
-    handle::Handle,
-};
 use std::ffi::{CStr, CString};
 use thiserror::Error;
 
 pub use crate::device::Device;
+pub use crate::device::DeviceType;
+pub use crate::device::DeviceVendor;
+pub use crate::handle::Handle;
 
 /// "Safe" SANE interface wrapper
 /// This type is [`Clone`], as it barely stores any state, and mostly exists as a container for the
