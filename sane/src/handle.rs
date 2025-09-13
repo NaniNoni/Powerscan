@@ -15,6 +15,10 @@ pub struct Handle {
     pub raw: SANE_Handle,
 }
 
+// TODO: verify that this is safe
+unsafe impl Send for Handle {}
+unsafe impl Sync for Handle {}
+
 impl Handle {
     /// <https://sane-project.gitlab.io/standard/api.html#sane-get-option-descriptor>
     pub fn get_option_descriptor(&self, n: i32) -> Result<Option<SaneOptionDescriptor>, SaneError> {
@@ -280,6 +284,7 @@ mod tests {
                 }
                 Err(SaneError::InternalSANE { status }) => {
                     if status == SANE_Status::SANE_STATUS_EOF {
+                        handle.cancel();
                         break;
                     }
                 }

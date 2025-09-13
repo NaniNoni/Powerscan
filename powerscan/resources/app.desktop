@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Powerscan
+Comment= Powerscan aims to become a more powerful, cross-platform alternative to programs like GNOME Simple Scan.
+Type=Application
+Icon=com.github.naninoni.powerscan
+Exec=powerscan %F
+Terminal=false
+StartupNotify=true
+Categories=COSMIC
+Keywords=COSMIC
+MimeType=

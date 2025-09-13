@@ -1,145 +1,30 @@
-use log::{debug, error};
-use relm4::gtk::prelude::*;
-use relm4::loading_widgets::LoadingWidgets;
-use relm4::prelude::*;
-use relm4::{AsyncComponentSender, RelmApp, RelmWidgetExt, gtk, view};
-use sane::{SANE_Status, Sane, SaneError};
+// SPDX-License-Identifier:  GPL-3.0-or-later
 
-struct AppModel {
-    sane: Sane,
-    devices: Vec<sane::Device>,
-}
+mod app;
+mod config;
+mod i18n;
 
-#[derive(Debug)]
-enum AppMsg {
-    StartScan,
-    ScanError(SaneError),
-    ScanFinished(Vec<u8>),
-}
+use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
-#[relm4::component(async)]
-impl AsyncComponent for AppModel {
-    type Init = u8;
-    type Input = AppMsg;
-    type Output = ();
-    type CommandOutput = ();
+fn main() -> cosmic::iced::Result {
+    tracing_subscriber::registry()
+        .with(fmt::layer())
+        .with(EnvFilter::from_default_env())
+        .init();
 
-    view! {
-        gtk::Window {
-            set_title: Some("Powerscan"),
-            set_default_width: 300,
-            set_default_height: 100,
+    // Get the system's preferred languages.
+    let requested_languages = i18n_embed::DesktopLanguageRequester::requested_languages();
 
-            gtk::Box {
-                set_spacing: 5,
-                set_margin_all: 5,
+    // Enable localizations to be applied.
+    i18n::init(&requested_languages);
 
-                gtk::Button::with_label("Scan") {
-                    connect_clicked[sender] => move |_| {
-                        sender.input(AppMsg::StartScan);
-                    }
-                },
+    // Settings for configuring the application window and iced runtime.
+    let settings = cosmic::app::Settings::default().size_limits(
+        cosmic::iced::Limits::NONE
+            .min_width(360.0)
+            .min_height(180.0),
+    );
 
-                gtk::Label {
-                    #[watch]
-                    set_label: &format!("Devices: {:?}", model.devices),
-                    set_margin_all: 5,
-                }
-            }
-        }
-    }
-
-    fn init_loading_widgets(root: Self::Root) -> Option<LoadingWidgets> {
-        view! {
-            #[local]
-            root {
-                set_title: Some("Simple app"),
-                set_default_size: (300, 100),
-
-                // This will be removed automatically by
-                // LoadingWidgets when the full view has loaded
-                #[name(spinner)]
-                gtk::Spinner {
-                    start: (),
-                    set_halign: gtk::Align::Center,
-                }
-            }
-        }
-        Some(LoadingWidgets::new(root, spinner))
-    }
-
-    // Initialize the component.
-    async fn init(
-        _counter: Self::Init,
-        root: Self::Root,
-        sender: AsyncComponentSender<Self>,
-    ) -> AsyncComponentParts<Self> {
-        let (sane, devices) = relm4::spawn(async move {
-            // TODO: error handling
-            let sane = Sane::init().unwrap();
-            let devices: Vec<sane::Device> = sane.get_devices().unwrap();
-
-            (sane, devices)
-        })
-        .await
-        .unwrap();
-
-        let model = AppModel { sane, devices };
-
-        // Insert the code generation of the view! macro here
-        let widgets = view_output!();
-
-        AsyncComponentParts { model, widgets }
-    }
-
-    async fn update(
-        &mut self,
-        msg: Self::Input,
-        sender: AsyncComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
-        match msg {
-            AppMsg::StartScan => {
-                // let devices = self.devices.clone();
-                let sane = self.sane.clone();
-
-                relm4::spawn(async move {
-                    const CHUNK_SIZE: usize = 512;
-                    let handle = sane.open("test:0").unwrap();
-                    handle.start().unwrap();
-
-                    let mut data = Vec::new();
-                    loop {
-                        match handle.read(CHUNK_SIZE) {
-                            Ok(chunk) => {
-                                println!("Chunk: {chunk:?}");
-                                data.extend_from_slice(&chunk);
-                            }
-                            Err(SaneError::InternalSANE { status }) => {
-                                if status == SANE_Status::SANE_STATUS_EOF {
-                                    break;
-                                }
-                            }
-                            Err(e) => sender.input(AppMsg::ScanError(e)),
-                        }
-                    }
-
-                    sender.input(AppMsg::ScanFinished(data))
-                })
-                .await
-                .unwrap()
-            }
-            AppMsg::ScanError(e) => {
-                error!("Error while scanning: {e}");
-            }
-            AppMsg::ScanFinished(data) => {
-                debug!("Finished scanning: {data:?}");
-            }
-        }
-    }
-}
-
-fn main() {
-    let app = RelmApp::new("relm4.test.simple_manual");
-    app.run_async::<AppModel>(0);
+    // Starts the application's event loop with `()` as the application's flags.
+    cosmic::app::run::<app::AppModel>(settings, ())
 }

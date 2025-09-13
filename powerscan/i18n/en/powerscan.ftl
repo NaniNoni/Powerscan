@@ -1,0 +1,9 @@
+app-title = Powerscan
+about = About
+view = View
+file = File
+quit = Quit
+select-source = Select Source
+welcome = Welcome to Powerscan
+page-id = Page { $num }
+git-description = Git commit {$hash} on {$date}

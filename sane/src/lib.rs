@@ -13,14 +13,14 @@ mod handle;
 mod option_descriptor;
 mod parameters;
 
-use crate::{
-    device::{DeviceType, DeviceVendor},
-    handle::Handle,
-};
 use std::ffi::{CStr, CString};
+use std::fmt::Display;
 use thiserror::Error;
 
 pub use crate::device::Device;
+pub use crate::device::DeviceType;
+pub use crate::device::DeviceVendor;
+pub use crate::handle::Handle;
 
 /// "Safe" SANE interface wrapper
 /// This type is [`Clone`], as it barely stores any state, and mostly exists as a container for the
@@ -43,6 +43,14 @@ pub enum SaneError {
 
     #[error("ffi nul error: {0}")]
     FfiError(#[from] std::ffi::NulError),
+}
+
+impl Display for SANE_Status {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let strstatus = unsafe { CStr::from_ptr(sane_strstatus(*self)).to_string_lossy() };
+
+        write!(f, "{self:?}: {strstatus}")
+    }
 }
 
 impl Sane {
