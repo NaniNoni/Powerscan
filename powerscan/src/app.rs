@@ -4,13 +4,13 @@ use crate::config::Config;
 use crate::fl;
 use cosmic::app::context_drawer;
 use cosmic::cosmic_config::{self, CosmicConfigEntry};
-use cosmic::iced::alignment::{Horizontal, Vertical};
+use cosmic::iced::alignment::Horizontal;
 use cosmic::iced::{Alignment, Length, Subscription};
 use cosmic::prelude::*;
 use cosmic::widget::{self, icon, menu, nav_bar};
 use cosmic::{cosmic_theme, theme};
 use futures_util::SinkExt;
-use sane::Sane;
+use sane::{SANE_Status, Sane, SaneError};
 use std::collections::HashMap;
 
 const REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");
@@ -42,6 +42,8 @@ pub enum Message {
     Quit,
     SaneReady(Result<(Sane, Vec<sane::Device>), String>),
     SelectDevice(usize),
+    StartScan,
+    ScanFinished,
     OpenRepositoryUrl,
     SubscriptionChannel,
     ToggleContextPage(ContextPage),
@@ -123,7 +125,14 @@ impl cosmic::Application for AppModel {
             // TODO: figure out nicer error mapping
             let result = tokio::task::spawn_blocking(move || {
                 let sane = Sane::init().map_err(|e| e.to_string())?;
-                let devices = sane.get_devices().map_err(|e| e.to_string())?;
+                let devices = sane
+                    .get_devices()
+                    .map_err(|e| e.to_string())?
+                    .into_iter()
+                    // TODO: support other types of devices
+                    .filter(|device| device.type_ == sane::DeviceType::FlatbedScanner)
+                    .collect();
+
                 Ok((sane, devices))
             })
             .await
@@ -144,8 +153,6 @@ impl cosmic::Application for AppModel {
         let device_items = self
             .devices
             .iter()
-            // TODO: support other types of devices
-            .filter(|device| device.type_ == sane::DeviceType::FlatbedScanner)
             .enumerate()
             .map(|(i, device)| {
                 menu::Item::CheckBox(
@@ -208,12 +215,12 @@ impl cosmic::Application for AppModel {
     /// Application events will be processed through the view. Any messages emitted by
     /// events received by widgets will be passed to the update method.
     fn view(&'_ self) -> Element<'_, Self::Message> {
-        widget::text::title1(fl!("welcome"))
-            .apply(widget::container)
+        widget::column()
+            .push(widget::text::title1(fl!("welcome")))
+            .push(widget::button::text("Scan").on_press(Message::StartScan))
             .width(Length::Fill)
             .height(Length::Fill)
             .align_x(Horizontal::Center)
-            .align_y(Vertical::Center)
             .into()
     }
 
@@ -269,6 +276,40 @@ impl cosmic::Application for AppModel {
                 tracing::info!("Opening device: {device:?}");
                 self.selected_device = self.sane.open(&device.name).ok();
             }
+            Message::StartScan => {
+                if let Some(handle) = self.selected_device.take() {
+                    return cosmic::task::future(async move {
+                        handle.start().unwrap();
+                        const CHUNK_SIZE: usize = 512;
+
+                        let mut data = Vec::new();
+                        loop {
+                            match handle.read(CHUNK_SIZE) {
+                                Ok(chunk) => {
+                                    println!("Chunk: {chunk:?}");
+                                    data.extend_from_slice(&chunk);
+                                }
+                                Err(SaneError::InternalSANE { status }) => {
+                                    tracing::debug!("Internal SANE error: {status}");
+                                    if status == SANE_Status::SANE_STATUS_EOF {
+                                        handle.cancel();
+                                        break;
+                                    }
+                                }
+                                Err(e) => {
+                                    tracing::error!("Scanning error: {e:?}");
+                                }
+                            }
+                        }
+
+                        Message::ScanFinished
+                    });
+                }
+            }
+            Message::ScanFinished => {
+                // TODO: output device information
+                tracing::info!("Finished scan");
+            }
 
             Message::OpenRepositoryUrl => {
                 _ = open::that_detached(REPOSITORY);
@@ -300,6 +341,7 @@ impl cosmic::Application for AppModel {
                 }
             },
         }
+
         Task::none()
     }
 
